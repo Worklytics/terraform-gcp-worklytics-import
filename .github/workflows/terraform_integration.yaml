@@ -1,0 +1,173 @@
+name: terraform_integration
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'rc-*'
+
+# Only one integration run per ref; cancel superseded runs so applies don't pile up
+# against the shared CI GCP project.
+concurrency:
+  group: tf-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Parallel matrix: init/validate/plan with pinned provider majors. Do NOT apply here —
+  # apply creates a real bucket and would race other e2e runs.
+  tf_compat:
+    name: 'Terraform plan (tf ${{ matrix.terraform_version }}, google ~> ${{ matrix.google_provider_major }}.0)'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        terraform_version: [ '~1.6.0', '~1.9.0', 'latest' ]
+        google_provider_major: [ '5', '6', '7' ]
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    env:
+      CI_SA_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT || vars.GCP_SERVICE_ACCOUNT || 'gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com' }}
+      GCP_IDENTITY_POOL: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER || vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github' }}
+      EXAMPLE_TENANT_SA_EMAIL: w8s-import-tf-ci@worklytics-ci.iam.gserviceaccount.com
+      GCP_PROJECT: worklytics-ci
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: 'setup Terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ matrix.terraform_version }}
+          terraform_wrapper: false
+
+      - id: 'auth-gcp'
+        name: 'Authenticate to Google Cloud'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_IDENTITY_POOL }}
+          service_account: ${{ env.CI_SA_EMAIL }}
+
+      - name: 'Set up Cloud SDK'
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: '>= 483.0.0'
+
+      - name: 'Pin Google provider to major ${{ matrix.google_provider_major }}'
+        # Overwrite providers.tf (the sole required_providers location) to pin to this matrix
+        # major version. Terraform resolves the intersection with the root module's ">= 5.0"
+        # constraint. Writing into the existing file avoids a duplicate required_providers error.
+        run: |
+          cat > examples/basic/providers.tf <<EOF
+          terraform {
+            backend "local" {
+              path = "terraform.tfstate"
+            }
+
+            required_providers {
+              google = {
+                source  = "hashicorp/google"
+                version = "~> ${{ matrix.google_provider_major }}.0"
+              }
+            }
+          }
+
+          provider "google" {
+            project = var.project_id
+          }
+          EOF
+
+      - name: 'Terraform init / validate / plan'
+        working-directory: examples/basic
+        run: |
+          terraform init
+          terraform validate
+          terraform plan -input=false \
+            -var="project_id=${GCP_PROJECT}" \
+            -var="worklytics_tenant_sa_email=${EXAMPLE_TENANT_SA_EMAIL}" \
+            -var="todos_as_local_files=false"
+
+  tf_e2e:
+    name: 'Terraform e2e (apply + gcs read + destroy)'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    env:
+      CI_SA_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT || vars.GCP_SERVICE_ACCOUNT || 'gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com' }}
+      GCP_IDENTITY_POOL: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER || vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github' }}
+      EXAMPLE_TENANT_SA_EMAIL: w8s-import-tf-ci@worklytics-ci.iam.gserviceaccount.com
+      GCP_PROJECT: worklytics-ci
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: 'setup Terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: latest
+          terraform_wrapper: false
+
+      - id: 'auth-gcp'
+        name: 'Authenticate to Google Cloud'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_IDENTITY_POOL }}
+          service_account: ${{ env.CI_SA_EMAIL }}
+
+      - name: 'Set up Cloud SDK'
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: '>= 483.0.0'
+
+      - name: 'Terraform - integration test examples/basic apply'
+        id: terraform_apply
+        working-directory: examples/basic
+        run: |
+          PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
+          terraform init
+          terraform apply -auto-approve \
+            -var="project_id=${GCP_PROJECT}" \
+            -var="worklytics_tenant_sa_email=${EXAMPLE_TENANT_SA_EMAIL}" \
+            -var="resource_name_prefix=${PREFIX}" \
+            -var="force_destroy=true" \
+            -var="todos_as_local_files=false"
+          echo "bucket_name=$(terraform output -raw bucket_name)" >> "$GITHUB_OUTPUT"
+
+      - name: 'GCS read as Worklytics tenant identity'
+        env:
+          CI_RUN: ${{ github.run_id }}_${{ github.run_attempt }}
+        run: |
+          ./test/gcs_roundtrip.sh \
+            "${EXAMPLE_TENANT_SA_EMAIL}" \
+            "${{ steps.terraform_apply.outputs.bucket_name }}"
+
+      - name: 'Terraform destroy'
+        if: always()
+        working-directory: examples/basic
+        run: |
+          if [ -f terraform.tfstate ] || [ -f terraform.tfstate.backup ]; then
+          PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
+          terraform destroy -auto-approve \
+            -var="project_id=${GCP_PROJECT}" \
+            -var="worklytics_tenant_sa_email=${EXAMPLE_TENANT_SA_EMAIL}" \
+            -var="resource_name_prefix=${PREFIX}" \
+            -var="force_destroy=true" \
+            -var="todos_as_local_files=false"
+          fi
+
+  # Branch protection requires a check named exactly "Terraform integration".
+  integration_gate:
+    name: Terraform integration
+    needs: [tf_compat, tf_e2e]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Require plan matrix + e2e success
+        run: |
+          echo "tf_compat=${{ needs.tf_compat.result }}"
+          echo "tf_e2e=${{ needs.tf_e2e.result }}"
+          test "${{ needs.tf_compat.result }}" = "success"
+          test "${{ needs.tf_e2e.result }}" = "success"

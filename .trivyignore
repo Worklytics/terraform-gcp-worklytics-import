@@ -1,0 +1,5 @@
+# Encryption and access logging are intentionally left to consumers so they can
+# compose with their own CMEK / log-bucket setup. Uniform bucket-level access
+# and public access prevention are set on buckets this module creates.
+AVD-GCP-0001
+AVD-GCP-0088
