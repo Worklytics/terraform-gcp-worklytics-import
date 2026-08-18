@@ -68,6 +68,17 @@ variable "location" {
   default     = "US"
 }
 
+variable "project_id" {
+  type        = string
+  description = <<-EOT
+    GCP project in which to create a bucket. If null, the google provider's project is used.
+    Set this when the provider is authenticated as a SA in a different project than the bucket
+    (for example CI WIF from a corp SA creating buckets in a sandbox project).
+  EOT
+  default     = null
+  nullable    = true
+}
+
 variable "force_destroy" {
   type        = bool
   description = <<-EOT

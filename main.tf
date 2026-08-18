@@ -51,6 +51,7 @@ resource "google_storage_bucket" "import" {
   for_each = local.create_buckets
 
   name                        = "${local.bucket_name_prefix}-${random_id.bucket[each.key].hex}"
+  project                     = var.project_id
   location                    = var.location
   force_destroy               = var.force_destroy
   uniform_bucket_level_access = true

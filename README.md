@@ -52,13 +52,13 @@ module "worklytics-import" {
 ```
 
 The calling configuration must declare a `google` provider (this module does not configure
-providers, so it can be composed into an existing GCP workspace). The provider's project is used
-when this module creates a bucket.
+providers, so it can be composed into an existing GCP workspace). A bucket is created in
+the provider's project unless you pass `project_id`.
 
 ```hcl
 provider "google" {
   project = var.project_id
-  # Optional: labels for buckets this module creates (google provider >= 5.12 / 7.x)
+  # Optional: labels for buckets this module creates (google provider 7.x)
   # default_labels = { purpose = "worklytics-import" }
 }
 ```
@@ -70,6 +70,7 @@ provider "google" {
 | `worklytics_tenant_sa_email` | yes | | Email of the Worklytics tenant GCP SA |
 | `bucket_name` | no | `null` | Reuse this bucket for the primary zone; otherwise one is created |
 | `import_buckets` | no | `[]` | Extra existing buckets to grant access on |
+| `project_id` | no | provider project | Project for a created bucket |
 | `location` | no | `US` | Region / multi-region used only when creating a bucket |
 | `enable_versioning` | no | `true` | Object versioning on a created bucket |
 | `bucket_access_logs_destination` | no | `null` | Log bucket for access logs (recommended in prod) |

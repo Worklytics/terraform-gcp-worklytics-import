@@ -1,6 +1,6 @@
 variable "project_id" {
   type        = string
-  description = "GCP project used by the google provider (and therefore for a bucket created by the module)."
+  description = "GCP project for a bucket created by the module. If null, the google provider project is used."
   default     = null
 }
 

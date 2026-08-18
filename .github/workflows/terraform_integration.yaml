@@ -51,7 +51,6 @@ jobs:
         with:
           workload_identity_provider: ${{ env.GCP_IDENTITY_POOL }}
           service_account: ${{ env.CI_SA_EMAIL }}
-          token_format: access_token
 
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
@@ -78,16 +77,11 @@ jobs:
           }
 
           provider "google" {
-            project = var.project_id
           }
           EOF
 
       - name: 'Terraform init / validate / plan'
         working-directory: examples/basic
-        env:
-          # Direct access token avoids the google provider calling
-          # iam.serviceAccounts.getAccessToken on the CI SA (WIF creds file).
-          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth-gcp.outputs.access_token }}
         run: |
           terraform init
           terraform validate
@@ -125,7 +119,6 @@ jobs:
         with:
           workload_identity_provider: ${{ env.GCP_IDENTITY_POOL }}
           service_account: ${{ env.CI_SA_EMAIL }}
-          token_format: access_token
 
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
@@ -135,8 +128,6 @@ jobs:
       - name: 'Terraform - integration test examples/basic apply'
         id: terraform_apply
         working-directory: examples/basic
-        env:
-          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth-gcp.outputs.access_token }}
         run: |
           PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
           terraform init
@@ -159,8 +150,6 @@ jobs:
       - name: 'Terraform destroy'
         if: always()
         working-directory: examples/basic
-        env:
-          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.auth-gcp.outputs.access_token }}
         run: |
           if [ -f terraform.tfstate ] || [ -f terraform.tfstate.backup ]; then
           PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
