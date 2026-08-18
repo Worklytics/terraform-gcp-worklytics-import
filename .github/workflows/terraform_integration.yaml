@@ -29,8 +29,8 @@ jobs:
       contents: 'read'
       id-token: 'write'
     env:
-      CI_SA_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT || vars.GCP_SERVICE_ACCOUNT || 'gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com' }}
-      GCP_IDENTITY_POOL: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER || vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github' }}
+      CI_SA_EMAIL: gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com
+      GCP_IDENTITY_POOL: 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github'
       EXAMPLE_TENANT_SA_EMAIL: w8s-import-tf-ci@worklytics-ci.iam.gserviceaccount.com
       # Do not name this GCP_PROJECT: google-github-actions/auth infers the SA's
       # project (worklytics-corp) and exports that, which overwrites job env.
@@ -97,8 +97,8 @@ jobs:
       contents: 'read'
       id-token: 'write'
     env:
-      CI_SA_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT || vars.GCP_SERVICE_ACCOUNT || 'gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com' }}
-      GCP_IDENTITY_POOL: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER || vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github' }}
+      CI_SA_EMAIL: gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com
+      GCP_IDENTITY_POOL: 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github'
       EXAMPLE_TENANT_SA_EMAIL: w8s-import-tf-ci@worklytics-ci.iam.gserviceaccount.com
       # Do not name this GCP_PROJECT: google-github-actions/auth infers the SA's
       # project (worklytics-corp) and exports that, which overwrites job env.
@@ -133,6 +133,7 @@ jobs:
         id: terraform_apply
         working-directory: examples/basic
         run: |
+          echo "Impersonating ${CI_SA_EMAIL}; creating buckets in ${CI_TF_PROJECT}"
           PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
           export GOOGLE_OAUTH_ACCESS_TOKEN
           GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
