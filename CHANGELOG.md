@@ -17,4 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   test that applies the module in GCP and reads an object as the stand-in Worklytics identity.
 - Maintainer release helper (`tools/release.sh`) that tags `origin/main` only after required CI
   checks pass.
-- Requires Terraform 1.3+ and `hashicorp/google` >= 5.0.
+- Requires Terraform 1.3+ and `hashicorp/google` >= 7.0.
+- Created buckets enable object versioning by default (`enable_versioning`).
+- Optional `bucket_access_logs_destination` and `kms_crypto_key_name` for prod logging / CMEK.

@@ -58,6 +58,8 @@ when this module creates a bucket.
 ```hcl
 provider "google" {
   project = var.project_id
+  # Optional: labels for buckets this module creates (google provider >= 5.12 / 7.x)
+  # default_labels = { purpose = "worklytics-import" }
 }
 ```
 
@@ -69,6 +71,9 @@ provider "google" {
 | `bucket_name` | no | `null` | Reuse this bucket for the primary zone; otherwise one is created |
 | `import_buckets` | no | `[]` | Extra existing buckets to grant access on |
 | `location` | no | `US` | Region / multi-region used only when creating a bucket |
+| `enable_versioning` | no | `true` | Object versioning on a created bucket |
+| `bucket_access_logs_destination` | no | `null` | Log bucket for access logs (recommended in prod) |
+| `kms_crypto_key_name` | no | `null` | Optional CMEK for a created bucket |
 | `enable_export` | no | `false` | Also grant write IAM and emit export TODOs |
 | `bucket_iam_role` | no | `roles/storage.objectViewer` | Role granted for import (read) |
 | `bucket_write_iam_role` | no | `roles/storage.objectAdmin` | Role granted when `enable_export` is true |
@@ -92,9 +97,9 @@ Rendered when `todos_as_outputs = true`.
 
 ## Compatibility
 
-This module is meant for use with Terraform 1.3+ and the `hashicorp/google` provider `>= 5.0`
-(tested against 5.x, 6.x, and 7.x). This module does not configure provider blocks; the caller
-must.
+This module is meant for use with Terraform 1.3+ and the `hashicorp/google` provider `>= 7.0`.
+This module does not configure provider blocks; the caller must. Use `default_labels` on the
+provider if you want labels on a bucket this module creates.
 
 If you find incompatibilities, please open an issue.
 
@@ -133,6 +138,24 @@ module "worklytics-import" {
 
 If `import_buckets` is set and `bucket_name` is omitted, only the list is used (no extra created
 primary).
+
+### Created-bucket hardening
+
+A bucket created by this module has uniform bucket-level access, public access prevention, and
+object versioning on by default (`enable_versioning = false` to turn versioning off).
+
+Access logging and CMEK are **optional** so this module does not invent a log bucket or KMS key.
+For production, pass them:
+
+```hcl
+module "worklytics-import" {
+  source = "Worklytics/worklytics-import/gcp"
+
+  worklytics_tenant_sa_email       = "YOUR_SA_EMAIL@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+  bucket_access_logs_destination   = "my-org-gcs-access-logs"
+  kms_crypto_key_name              = "projects/my-project/locations/us/keyRings/import/cryptoKeys/gcs"
+}
+```
 
 ### Also allow exports to the same bucket(s)
 

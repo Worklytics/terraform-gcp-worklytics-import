@@ -46,6 +46,13 @@ run "creates_bucket_when_omitted" {
     ])
     error_message = "IAM member must be the Worklytics tenant service account."
   }
+
+  assert {
+    condition = alltrue([
+      for b in google_storage_bucket.import : b.versioning[0].enabled == true
+    ])
+    error_message = "Created buckets should have versioning enabled by default."
+  }
 }
 
 run "reuses_existing_bucket" {
@@ -181,5 +188,20 @@ run "enable_export_grants_object_admin" {
   assert {
     condition     = length(google_storage_bucket_iam_member.worklytics) == 2
     error_message = "Import + export should produce two IAM bindings on one bucket."
+  }
+}
+
+run "disables_versioning_when_requested" {
+  command = plan
+
+  variables {
+    enable_versioning = false
+  }
+
+  assert {
+    condition = alltrue([
+      for b in google_storage_bucket.import : b.versioning[0].enabled == false
+    ])
+    error_message = "enable_versioning=false should turn object versioning off."
   }
 }

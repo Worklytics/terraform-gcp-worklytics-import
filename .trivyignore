@@ -1,5 +1,10 @@
-# Encryption and access logging are intentionally left to consumers so they can
-# compose with their own CMEK / log-bucket setup. Uniform bucket-level access
-# and public access prevention are set on buckets this module creates.
-AVD-GCP-0001
-AVD-GCP-0088
+# Optional controls: customers can enable these via module variables. Defaults
+# leave encryption as Google-managed and access logging off so we do not force
+# a log bucket or CMEK on every consumer. Prefer the inline `#trivy:ignore`
+# comments on google_storage_bucket.import; these IDs keep the table/SARIF
+# scanners quiet when they do not honor resource comments.
+#
+# AVD-GCP-0001 / AVD-GCP-0088 are stale names for these checks (now GCP-0066
+# and GCP-0077).
+AVD-GCP-0066
+AVD-GCP-0077

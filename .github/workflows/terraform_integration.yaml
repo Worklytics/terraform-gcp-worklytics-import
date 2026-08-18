@@ -24,7 +24,7 @@ jobs:
       max-parallel: 8
       matrix:
         terraform_version: [ '~1.6.0', '~1.9.0', 'latest' ]
-        google_provider_major: [ '5', '6', '7' ]
+        google_provider_major: [ '7' ]
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -32,7 +32,9 @@ jobs:
       CI_SA_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT || vars.GCP_SERVICE_ACCOUNT || 'gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com' }}
       GCP_IDENTITY_POOL: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER || vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github' }}
       EXAMPLE_TENANT_SA_EMAIL: w8s-import-tf-ci@worklytics-ci.iam.gserviceaccount.com
-      GCP_PROJECT: worklytics-ci
+      # Do not name this GCP_PROJECT: google-github-actions/auth infers the SA's
+      # project (worklytics-corp) and exports that, which overwrites job env.
+      CI_TF_PROJECT: worklytics-ci
     steps:
       - name: Check out code
         uses: actions/checkout@v6
@@ -49,15 +51,17 @@ jobs:
         with:
           workload_identity_provider: ${{ env.GCP_IDENTITY_POOL }}
           service_account: ${{ env.CI_SA_EMAIL }}
+          project_id: worklytics-ci
 
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
         with:
           version: '>= 483.0.0'
+          project_id: worklytics-ci
 
       - name: 'Pin Google provider to major ${{ matrix.google_provider_major }}'
         # Overwrite providers.tf (the sole required_providers location) to pin to this matrix
-        # major version. Terraform resolves the intersection with the root module's ">= 5.0"
+        # major version. Terraform resolves the intersection with the root module's ">= 7.0"
         # constraint. Writing into the existing file avoids a duplicate required_providers error.
         run: |
           cat > examples/basic/providers.tf <<EOF
@@ -85,7 +89,7 @@ jobs:
           terraform init
           terraform validate
           terraform plan -input=false \
-            -var="project_id=${GCP_PROJECT}" \
+            -var="project_id=${CI_TF_PROJECT}" \
             -var="worklytics_tenant_sa_email=${EXAMPLE_TENANT_SA_EMAIL}" \
             -var="todos_as_local_files=false"
 
@@ -99,7 +103,9 @@ jobs:
       CI_SA_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT || vars.GCP_SERVICE_ACCOUNT || 'gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com' }}
       GCP_IDENTITY_POOL: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER || vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github' }}
       EXAMPLE_TENANT_SA_EMAIL: w8s-import-tf-ci@worklytics-ci.iam.gserviceaccount.com
-      GCP_PROJECT: worklytics-ci
+      # Do not name this GCP_PROJECT: google-github-actions/auth infers the SA's
+      # project (worklytics-corp) and exports that, which overwrites job env.
+      CI_TF_PROJECT: worklytics-ci
     steps:
       - name: Check out code
         uses: actions/checkout@v6
@@ -116,11 +122,13 @@ jobs:
         with:
           workload_identity_provider: ${{ env.GCP_IDENTITY_POOL }}
           service_account: ${{ env.CI_SA_EMAIL }}
+          project_id: worklytics-ci
 
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
         with:
           version: '>= 483.0.0'
+          project_id: worklytics-ci
 
       - name: 'Terraform - integration test examples/basic apply'
         id: terraform_apply
@@ -129,7 +137,7 @@ jobs:
           PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
           terraform init
           terraform apply -auto-approve \
-            -var="project_id=${GCP_PROJECT}" \
+            -var="project_id=${CI_TF_PROJECT}" \
             -var="worklytics_tenant_sa_email=${EXAMPLE_TENANT_SA_EMAIL}" \
             -var="resource_name_prefix=${PREFIX}" \
             -var="force_destroy=true" \
@@ -151,7 +159,7 @@ jobs:
           if [ -f terraform.tfstate ] || [ -f terraform.tfstate.backup ]; then
           PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
           terraform destroy -auto-approve \
-            -var="project_id=${GCP_PROJECT}" \
+            -var="project_id=${CI_TF_PROJECT}" \
             -var="worklytics_tenant_sa_email=${EXAMPLE_TENANT_SA_EMAIL}" \
             -var="resource_name_prefix=${PREFIX}" \
             -var="force_destroy=true" \

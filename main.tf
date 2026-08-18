@@ -41,8 +41,12 @@ resource "random_id" "bucket" {
   byte_length = 4
 }
 
-#trivy:ignore:AVD-GCP-0001 Customer-managed encryption is left to consumers.
-#trivy:ignore:AVD-GCP-0088 Access logging is left to consumers who have a log bucket.
+# Trivy IDs as of 2026 (AVD-GCP-0001 / AVD-GCP-0088 are stale):
+#   GCP-0066 / AVD-GCP-0066 CMEK — optional via kms_crypto_key_name
+#   GCP-0077 / AVD-GCP-0077 access logs — optional via bucket_access_logs_destination
+#   GCP-0078 versioning — on by default via enable_versioning
+#trivy:ignore:AVD-GCP-0066 CMEK is optional; pass kms_crypto_key_name to enable.
+#trivy:ignore:AVD-GCP-0077 Access logging is optional; pass bucket_access_logs_destination for prod.
 resource "google_storage_bucket" "import" {
   for_each = local.create_buckets
 
@@ -53,15 +57,22 @@ resource "google_storage_bucket" "import" {
   public_access_prevention    = "enforced"
   storage_class               = "STANDARD"
 
-  labels = {
-    purpose = "worklytics-import"
+  versioning {
+    enabled = var.enable_versioning
   }
 
-  lifecycle {
-    ignore_changes = [
-      # don't conflict with labels customers might wish to add themselves
-      labels,
-    ]
+  dynamic "logging" {
+    for_each = var.bucket_access_logs_destination != null ? [var.bucket_access_logs_destination] : []
+    content {
+      log_bucket = logging.value
+    }
+  }
+
+  dynamic "encryption" {
+    for_each = var.kms_crypto_key_name != null ? [var.kms_crypto_key_name] : []
+    content {
+      default_kms_key_name = encryption.value
+    }
   }
 }
 

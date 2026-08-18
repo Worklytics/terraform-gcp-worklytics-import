@@ -77,6 +77,35 @@ variable "force_destroy" {
   default     = false
 }
 
+variable "enable_versioning" {
+  type        = bool
+  description = <<-EOT
+    Whether to enable object versioning on a bucket created by this module. Defaults to true.
+    Set false only if you manage versioning outside this module.
+  EOT
+  default     = true
+}
+
+variable "bucket_access_logs_destination" {
+  type        = string
+  description = <<-EOT
+    Existing GCS bucket that should receive access logs for a bucket this module creates.
+    Recommended for production. If null, access logging is not configured.
+  EOT
+  default     = null
+  nullable    = true
+}
+
+variable "kms_crypto_key_name" {
+  type        = string
+  description = <<-EOT
+    Optional CMEK (full CryptoKey resource name) for a bucket created by this module. If null,
+    Google-managed encryption is used. The key must be in the same location as the bucket.
+  EOT
+  default     = null
+  nullable    = true
+}
+
 variable "enable_export" {
   type        = bool
   description = <<-EOT
