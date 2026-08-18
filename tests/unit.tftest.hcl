@@ -205,3 +205,50 @@ run "disables_versioning_when_requested" {
     error_message = "enable_versioning=false should turn object versioning off."
   }
 }
+
+run "sets_project_id_on_created_bucket" {
+  command = plan
+
+  variables {
+    project_id = "other-project"
+  }
+
+  assert {
+    condition = alltrue([
+      for b in google_storage_bucket.import : b.project == "other-project"
+    ])
+    error_message = "Created buckets should land in var.project_id when it is set."
+  }
+}
+
+run "enables_access_logs_when_destination_set" {
+  command = plan
+
+  variables {
+    bucket_access_logs_destination = "already-there-logs"
+  }
+
+  assert {
+    condition = alltrue([
+      for b in google_storage_bucket.import :
+      b.logging[0].log_bucket == "already-there-logs"
+    ])
+    error_message = "bucket_access_logs_destination should configure bucket logging."
+  }
+}
+
+run "enables_cmek_when_key_provided" {
+  command = plan
+
+  variables {
+    kms_crypto_key_name = "projects/p/locations/us/keyRings/r/cryptoKeys/k"
+  }
+
+  assert {
+    condition = alltrue([
+      for b in google_storage_bucket.import :
+      b.encryption[0].default_kms_key_name == "projects/p/locations/us/keyRings/r/cryptoKeys/k"
+    ])
+    error_message = "kms_crypto_key_name should set default_kms_key_name on created buckets."
+  }
+}

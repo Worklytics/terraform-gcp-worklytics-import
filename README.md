@@ -63,6 +63,11 @@ provider "google" {
 }
 ```
 
+If you authenticate as a service account in one project (for example CI WIF) and create the
+bucket in another via `project_id`, set `user_project_override = true` and `billing_project` to
+the identity's project. Otherwise the Storage API uses the bucket project as quota project and
+token refresh can fail with `iam.serviceAccounts.getAccessToken` denied.
+
 ## Inputs
 
 | Name | Required | Default | Description |
