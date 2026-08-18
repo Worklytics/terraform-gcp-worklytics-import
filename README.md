@@ -64,9 +64,10 @@ provider "google" {
 ```
 
 If you authenticate as a service account in one project (for example CI WIF) and create the
-bucket in another via `project_id`, set `user_project_override = true` and `billing_project` to
-the identity's project. Otherwise the Storage API uses the bucket project as quota project and
-token refresh can fail with `iam.serviceAccounts.getAccessToken` denied.
+bucket in another via `project_id`, impersonated ADC can fail on bucket create: Storage uses
+the bucket project as quota project and token refresh then looks up the SA there. Mint an
+access token (`gcloud auth print-access-token`) and set `GOOGLE_OAUTH_ACCESS_TOKEN` for that
+apply, or create the bucket in the same project as the authenticated identity.
 
 ## Inputs
 

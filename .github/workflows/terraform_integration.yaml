@@ -57,15 +57,6 @@ jobs:
         with:
           version: '>= 483.0.0'
 
-      # Storage is a resource-based API: without this, token refresh uses the bucket
-      # project (worklytics-ci) and iam.serviceAccounts.getAccessToken 403s looking up
-      # the corp CI SA there. Auth exports GCP_PROJECT from the SA (worklytics-corp).
-      - name: 'Pin API quota to the WIF service-account project'
-        run: |
-          echo "USER_PROJECT_OVERRIDE=true" >> "$GITHUB_ENV"
-          echo "GOOGLE_BILLING_PROJECT=${GCP_PROJECT}" >> "$GITHUB_ENV"
-          echo "GOOGLE_CLOUD_QUOTA_PROJECT=${GCP_PROJECT}" >> "$GITHUB_ENV"
-
       - name: 'Pin Google provider to major ${{ matrix.google_provider_major }}'
         # Overwrite providers.tf (the sole required_providers location) to pin to this matrix
         # major version. Terraform resolves the intersection with the root module's ">= 7.0"
@@ -134,22 +125,17 @@ jobs:
         with:
           version: '>= 483.0.0'
 
-      - name: 'Pin API quota to the WIF service-account project'
-        run: |
-          echo "USER_PROJECT_OVERRIDE=true" >> "$GITHUB_ENV"
-          echo "GOOGLE_BILLING_PROJECT=${GCP_PROJECT}" >> "$GITHUB_ENV"
-          echo "GOOGLE_CLOUD_QUOTA_PROJECT=${GCP_PROJECT}" >> "$GITHUB_ENV"
-
-      - name: 'Verify CI identity can call Storage in the sandbox project'
-        run: |
-          echo "quota project=${GCP_PROJECT} bucket project=${CI_TF_PROJECT}"
-          gcloud storage buckets list --project="${CI_TF_PROJECT}" --limit=1
-
+      # WIF creds impersonate the corp SA. Terraform's Storage client then retries
+      # generateAccessToken with the bucket project as quota and 403s. A minted
+      # access token skips that refresh. Do not set GOOGLE_CLOUD_QUOTA_PROJECT:
+      # the GitHub principal is not a serviceUsageConsumer on worklytics-corp.
       - name: 'Terraform - integration test examples/basic apply'
         id: terraform_apply
         working-directory: examples/basic
         run: |
           PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
+          export GOOGLE_OAUTH_ACCESS_TOKEN
+          GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
           terraform init
           terraform apply -auto-approve \
             -var="project_id=${CI_TF_PROJECT}" \
@@ -173,6 +159,8 @@ jobs:
         run: |
           if [ -f terraform.tfstate ] || [ -f terraform.tfstate.backup ]; then
           PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
+          export GOOGLE_OAUTH_ACCESS_TOKEN
+          GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
           terraform destroy -auto-approve \
             -var="project_id=${CI_TF_PROJECT}" \
             -var="worklytics_tenant_sa_email=${EXAMPLE_TENANT_SA_EMAIL}" \
