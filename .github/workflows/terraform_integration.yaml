@@ -51,13 +51,11 @@ jobs:
         with:
           workload_identity_provider: ${{ env.GCP_IDENTITY_POOL }}
           service_account: ${{ env.CI_SA_EMAIL }}
-          project_id: worklytics-ci
 
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
         with:
           version: '>= 483.0.0'
-          project_id: worklytics-ci
 
       - name: 'Pin Google provider to major ${{ matrix.google_provider_major }}'
         # Overwrite providers.tf (the sole required_providers location) to pin to this matrix
@@ -122,13 +120,11 @@ jobs:
         with:
           workload_identity_provider: ${{ env.GCP_IDENTITY_POOL }}
           service_account: ${{ env.CI_SA_EMAIL }}
-          project_id: worklytics-ci
 
       - name: 'Set up Cloud SDK'
         uses: google-github-actions/setup-gcloud@v2
         with:
           version: '>= 483.0.0'
-          project_id: worklytics-ci
 
       - name: 'Terraform - integration test examples/basic apply'
         id: terraform_apply
