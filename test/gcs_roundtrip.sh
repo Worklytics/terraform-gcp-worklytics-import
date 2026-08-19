@@ -30,13 +30,18 @@ retry() {
   local attempt=1
   local max_attempts=12
   local delay=10
-  local output
+  local stdout_file stderr_file
+  stdout_file="$(mktemp "${TMP_DIR}/retry-out.XXXXXX")"
+  stderr_file="$(mktemp "${TMP_DIR}/retry-err.XXXXXX")"
   while (( attempt <= max_attempts )); do
-    if output="$("$@" 2>&1)"; then
-      printf '%s' "${output}"
+    # Do not merge stderr into the captured body: gsutil prints an
+    # impersonation WARNING on stdout-adjacent stderr that is not object data.
+    if "$@" >"${stdout_file}" 2>"${stderr_file}"; then
+      cat "${stderr_file}" >&2
+      cat "${stdout_file}"
       return 0
     fi
-    echo "Attempt ${attempt}/${max_attempts} failed: ${output}" >&2
+    echo "Attempt ${attempt}/${max_attempts} failed: $(cat "${stderr_file}" "${stdout_file}")" >&2
     sleep "${delay}"
     delay=$(( delay < 40 ? delay * 2 : 40 ))
     attempt=$(( attempt + 1 ))
