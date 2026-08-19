@@ -16,6 +16,6 @@ terraform {
 
 # In real use you likely already have this provider block in the root module.
 # Do not force `project` here: WIF credentials impersonate a SA in the provider
-# project (worklytics-corp in CI). Created buckets use module.project_id.
+# project. Created buckets use module.project_id.
 provider "google" {
 }

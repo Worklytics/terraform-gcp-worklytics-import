@@ -9,9 +9,20 @@ on:
 
 # Only one integration run per ref; cancel superseded runs so applies don't pile up
 # against the shared CI GCP project.
+#
+# Identifiers live in GitHub Actions *variables* (not secrets): they are not
+# credentials, and secrets would redact them in logs. Provisioned outside this
+# repo (org-github / repo settings). Do not name a variable GCP_PROJECT —
+# google-github-actions/auth exports that from the SA and would overwrite it.
 concurrency:
   group: tf-integration-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  CI_SA_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT }}
+  GCP_IDENTITY_POOL: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+  EXAMPLE_TENANT_SA_EMAIL: ${{ vars.EXAMPLE_TENANT_SA_EMAIL }}
+  CI_TF_PROJECT: ${{ vars.CI_TF_PROJECT }}
 
 jobs:
   # Parallel matrix: init/validate/plan with pinned provider majors. Do NOT apply here —
@@ -28,13 +39,6 @@ jobs:
     permissions:
       contents: 'read'
       id-token: 'write'
-    env:
-      CI_SA_EMAIL: gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com
-      GCP_IDENTITY_POOL: 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github'
-      EXAMPLE_TENANT_SA_EMAIL: w8s-import-tf-ci@worklytics-ci.iam.gserviceaccount.com
-      # Do not name this GCP_PROJECT: google-github-actions/auth infers the SA's
-      # project (worklytics-corp) and exports that, which overwrites job env.
-      CI_TF_PROJECT: worklytics-ci
     steps:
       - name: Check out code
         uses: actions/checkout@v7
@@ -96,13 +100,6 @@ jobs:
     permissions:
       contents: 'read'
       id-token: 'write'
-    env:
-      CI_SA_EMAIL: gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com
-      GCP_IDENTITY_POOL: 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github'
-      EXAMPLE_TENANT_SA_EMAIL: w8s-import-tf-ci@worklytics-ci.iam.gserviceaccount.com
-      # Do not name this GCP_PROJECT: google-github-actions/auth infers the SA's
-      # project (worklytics-corp) and exports that, which overwrites job env.
-      CI_TF_PROJECT: worklytics-ci
     steps:
       - name: Check out code
         uses: actions/checkout@v7
@@ -125,10 +122,10 @@ jobs:
         with:
           version: '>= 483.0.0'
 
-      # WIF creds impersonate the corp SA. Terraform's Storage client then retries
+      # WIF creds impersonate the CI SA. Terraform's Storage client then retries
       # generateAccessToken with the bucket project as quota and 403s. A minted
       # access token skips that refresh. Do not set GOOGLE_CLOUD_QUOTA_PROJECT:
-      # the GitHub principal is not a serviceUsageConsumer on worklytics-corp.
+      # the GitHub principal is not a serviceUsageConsumer on the SA's project.
       - name: 'Terraform - integration test examples/basic apply'
         id: terraform_apply
         working-directory: examples/basic

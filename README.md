@@ -248,17 +248,18 @@ Unit tests live in [`tests/`](tests/) and use Terraform's native test framework 
 `google` provider (no cloud credentials).
 
 Integration tests authenticate to **GCP** (GitHub → WIF) to apply this module and to impersonate
-the stand-in Worklytics tenant SA. Required GitHub secrets (public repo) or variables (private
-repo):
+the stand-in Worklytics tenant SA. Identifiers are GitHub Actions **variables** (not secrets —
+secrets redact logs). Set them in repo settings / `worklytics-infra`, not in the workflow file:
 
 | Name | Purpose |
 |------|---------|
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | GitHub Actions WIF provider |
-| `GCP_SERVICE_ACCOUNT` | CI agent SA (e.g. `gh-actions-tf-gcp-import@...`) |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | GitHub Actions WIF provider resource name |
+| `GCP_SERVICE_ACCOUNT` | CI agent SA email |
+| `EXAMPLE_TENANT_SA_EMAIL` | Stand-in Worklytics tenant SA for the round-trip |
+| `CI_TF_PROJECT` | GCP project where e2e creates buckets |
 
-The CI agent SA must be able to create buckets in `worklytics-ci` and impersonate the stand-in
-tenant SA (`w8s-import-tf-ci@worklytics-ci.iam.gserviceaccount.com`). That sandbox is provisioned
-by `worklytics-infra` (`src/development`).
+The CI agent SA must be able to create buckets in `CI_TF_PROJECT` and impersonate the stand-in
+tenant SA. That sandbox is provisioned by `worklytics-infra` (`src/development`).
 
 (c) 2026 Worklytics, Co
 
