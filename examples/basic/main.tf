@@ -10,6 +10,7 @@ module "worklytics_import" {
   project_id                 = var.project_id
   resource_name_prefix       = var.resource_name_prefix
   worklytics_tenant_sa_email = var.worklytics_tenant_sa_email
+  worklytics_host            = var.worklytics_host
   bucket_name                = var.bucket_name
   import_buckets             = var.import_buckets
   location                   = var.location

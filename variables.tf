@@ -167,8 +167,16 @@ variable "bucket_iam_role" {
 
 variable "worklytics_host" {
   type        = string
-  description = "Host of the Worklytics instance where the tenant resides (e.g. app.worklytics.co)."
+  description = <<-EOT
+    Hostname of the Worklytics instance (no scheme or path). Defaults to `app.worklytics.co`.
+    Connection TODO URLs are built from this host.
+  EOT
   default     = "app.worklytics.co"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$", var.worklytics_host))
+    error_message = "`worklytics_host` must be a hostname without scheme or path (e.g. app.worklytics.co)."
+  }
 }
 
 variable "todos_as_outputs" {

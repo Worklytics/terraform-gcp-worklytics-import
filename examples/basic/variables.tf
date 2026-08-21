@@ -15,6 +15,12 @@ variable "worklytics_tenant_sa_email" {
   description = "Email address of your Worklytics tenant's service account (obtain from Worklytics App)."
 }
 
+variable "worklytics_host" {
+  type        = string
+  description = "Worklytics hostname for connection URLs."
+  default     = "app.worklytics.co"
+}
+
 variable "bucket_name" {
   type        = string
   description = "Existing GCS bucket to reuse. If null, the module creates one."

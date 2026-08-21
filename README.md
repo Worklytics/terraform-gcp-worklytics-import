@@ -93,7 +93,7 @@ apply, or create the bucket in the same project as the authenticated identity.
 | `bucket_iam_role` | no | `roles/storage.objectViewer` | Role granted for import (read) |
 | `resource_name_prefix` | no | `worklytics-import-` | Prefix for a created bucket name |
 | `force_destroy` | no | `false` | Allow destroying a created bucket that still has objects |
-| `worklytics_host` | no | `app.worklytics.co` | Host used in generated connection URLs |
+| `worklytics_host` | no | `app.worklytics.co` | Worklytics hostname used in generated connection URLs |
 | `todos_as_outputs` | no | `false` | Render setup TODOs as the `todo_markdown` output |
 | `todos_as_local_files` | no | `true` | Write a local TODO markdown file |
 | `todo_file_path` | no | `TODO - configure import in worklytics.md` | Path for that TODO file |

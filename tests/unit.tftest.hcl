@@ -278,3 +278,30 @@ run "enables_cmek_when_key_provided" {
     error_message = "kms_crypto_key_name should set default_kms_key_name on created buckets."
   }
 }
+
+run "todo_urls_use_worklytics_host" {
+  command = plan
+
+  variables {
+    bucket_name      = "already-there-bucket"
+    todos_as_outputs = true
+    worklytics_host  = "acme.worklytics.co"
+  }
+
+  assert {
+    condition     = strcontains(output.todo_markdown, "https://acme.worklytics.co/analytics/connect/gcs-import?bucket=already-there-bucket")
+    error_message = "TODO deep links must use worklytics_host."
+  }
+}
+
+run "rejects_worklytics_host_with_scheme" {
+  command = plan
+
+  variables {
+    worklytics_host = "https://app.worklytics.co"
+  }
+
+  expect_failures = [
+    var.worklytics_host,
+  ]
+}
