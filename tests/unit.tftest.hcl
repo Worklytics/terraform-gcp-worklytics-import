@@ -161,33 +161,59 @@ run "rejects_invalid_import_buckets_name" {
   ]
 }
 
-run "enable_export_grants_object_admin" {
+run "rejects_duplicate_import_buckets" {
   command = plan
 
   variables {
-    bucket_name   = "already-there-bucket"
-    enable_export = true
+    import_buckets = ["same-bucket", "same-bucket"]
+  }
+
+  expect_failures = [
+    var.import_buckets,
+  ]
+}
+
+run "rejects_invalid_resource_name_prefix" {
+  command = plan
+
+  variables {
+    resource_name_prefix = "-not-a-valid-gcs-prefix"
+  }
+
+  expect_failures = [
+    var.resource_name_prefix,
+  ]
+}
+
+run "list_only_preserves_first_bucket_as_primary" {
+  command = plan
+
+  variables {
+    import_buckets = ["zebra-ingest-bucket", "alpha-ingest-bucket"]
   }
 
   assert {
-    condition = anytrue([
-      for m in google_storage_bucket_iam_member.worklytics :
-      m.role == "roles/storage.objectAdmin"
-    ])
-    error_message = "enable_export must grant roles/storage.objectAdmin."
+    condition     = output.bucket_name == "zebra-ingest-bucket"
+    error_message = "List-only primary outputs should follow caller order, not lexicographic sort."
   }
+}
 
-  assert {
-    condition = anytrue([
-      for m in google_storage_bucket_iam_member.worklytics :
-      m.role == "roles/storage.objectViewer"
-    ])
-    error_message = "enable_export should keep the import read role as well."
+run "bucket_named_primary_does_not_collide" {
+  command = plan
+
+  variables {
+    bucket_name    = "already-there-bucket"
+    import_buckets = ["primary"]
   }
 
   assert {
     condition     = length(google_storage_bucket_iam_member.worklytics) == 2
-    error_message = "Import + export should produce two IAM bindings on one bucket."
+    error_message = "A list bucket named primary must not collide with the reserved primary key."
+  }
+
+  assert {
+    condition     = output.bucket_name == "already-there-bucket"
+    error_message = "Singular bucket_name remains the primary landing zone."
   }
 }
 

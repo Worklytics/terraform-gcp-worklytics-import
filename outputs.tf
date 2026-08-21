@@ -11,8 +11,9 @@ output "bucket_url" {
 output "import_buckets" {
   value       = local.resolved_import_targets
   description = <<-EOT
-    Map of all import landing zones keyed by target key (`primary` plus any `import_buckets`
-    names). Each value has `bucket_name` and whether the module created it.
+    Map of all import landing zones. The created-or-singular zone is keyed `primary`; extra
+    `import_buckets` entries are keyed `bucket:<name>` so a bucket named `primary` cannot
+    collide. Each value has `bucket_name` and whether the module created it.
   EOT
 }
 

@@ -39,12 +39,6 @@ variable "force_destroy" {
   default     = false
 }
 
-variable "enable_export" {
-  type        = bool
-  description = "Also grant write IAM for Worklytics data export."
-  default     = false
-}
-
 variable "todos_as_local_files" {
   type        = bool
   description = "Whether to render TODOs as flat files."

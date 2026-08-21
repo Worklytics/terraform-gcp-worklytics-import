@@ -15,7 +15,8 @@ locals {
     }] : [],
     [
       for name in local.extra_buckets : {
-        key         = name
+        # Namespace so a bucket literally named "primary" cannot collide with the reserved key.
+        key         = "bucket:${name}"
         bucket_name = name
       }
     ]
@@ -86,35 +87,20 @@ locals {
     }
   }
 
-  primary_import_key = contains(keys(local.resolved_import_targets), "primary") ? "primary" : sort(keys(local.resolved_import_targets))[0]
+  # Prefer the reserved primary key; otherwise the first list-only target (caller order, not sort).
+  primary_import_key = contains(keys(local.resolved_import_targets), "primary") ? "primary" : local.import_targets_list[0].key
   primary_import     = local.resolved_import_targets[local.primary_import_key]
-
-  # Roles to bind: always the import (read) role; write role too when export is enabled and distinct.
-  bucket_roles = distinct(compact([
-    var.bucket_iam_role,
-    var.enable_export ? var.bucket_write_iam_role : null,
-  ]))
-
-  iam_members = {
-    for pair in setproduct(keys(local.resolved_import_targets), local.bucket_roles) :
-    "${pair[0]}:${pair[1]}" => {
-      target_key  = pair[0]
-      bucket_name = local.resolved_import_targets[pair[0]].bucket_name
-      role        = pair[1]
-    }
-  }
 }
 
 # Worklytics import requires get + list on objects in the customer bucket.
-# `roles/storage.objectViewer` is the default (PoLP). `enable_export` adds objectAdmin
-# (documented for GCS export; overwrite is delete+create).
-#trivy:ignore:AVD-GCP-0007 objectAdmin is the documented export role; import defaults to objectViewer
+# `roles/storage.objectViewer` is the default (PoLP). This module is import-only
+# (Customer Premises → Worklytics); it does not grant write for data export.
 resource "google_storage_bucket_iam_member" "worklytics" {
-  for_each = local.iam_members
+  for_each = local.resolved_import_targets
 
   bucket = each.value.bucket_name
   member = "serviceAccount:${var.worklytics_tenant_sa_email}"
-  role   = each.value.role
+  role   = var.bucket_iam_role
 }
 
 locals {
@@ -123,47 +109,36 @@ locals {
     "  - ${k}: `gs://${t.bucket_name}`"
   ])
 
-  export_todo_content = <<EOT
-
-# Configure Data Export in Worklytics (optional; enabled in this apply)
-
-1. Visit `https://${var.worklytics_host}/analytics/data-export/connect?type=GOOGLE_CLOUD_STORAGE&bucket=${local.primary_import.bucket_name}`
-2. Review dataset type and other settings, then click "Create Data Export".
-
-The same Worklytics tenant service account was granted `${var.bucket_write_iam_role}` on the
-bucket(s) above so exports can be written there.
-EOT
-
-  export_todo = var.enable_export ? local.export_todo_content : ""
-
   todo_content = <<EOT
 # Configure Data Import in Worklytics
 
+This connection pulls files **from your GCS bucket into Worklytics**
+(Customer Premises → Worklytics). It is not a data export.
+
 1. Ensure you're authenticated with Worklytics. Either sign-in at [https://${var.worklytics_host}](https://${var.worklytics_host})
   with your organization's SSO provider *or* request OTP link from your Worklytics support.
-2. Visit `https://${var.worklytics_host}/analytics/data-import/connect?type=GOOGLE_CLOUD_STORAGE&bucket=${local.primary_import.bucket_name}`
+2. Visit `https://${var.worklytics_host}/analytics/connect/gcs-import?bucket=${local.primary_import.bucket_name}`
 3. Review any additional settings and click "Create Data Import". Repeat for any extra buckets.
 
-Import landing zones granted to Worklytics:
+Import landing zones granted to Worklytics (read):
 ${local.import_todo_rows}
 
 Alternatively, you may follow the manual instructions below:
 
-1. Visit [https://${var.worklytics_host}](https://${var.worklytics_host})
-  (or login into Worklytics, and navigate to Manage --> Import Data).
+1. Visit [https://${var.worklytics_host}/analytics/connect](https://${var.worklytics_host}/analytics/connect)
+  (or login into Worklytics, and navigate to Connect → Google Cloud Storage import).
 2. Create a new Google Cloud Storage import connection with the following values:
   - Bucket: ${local.primary_import.bucket_name}
   - Worklytics tenant identity: ${var.worklytics_tenant_sa_email}
 
 Write objects you want Worklytics to ingest into the bucket(s). Worklytics authenticates as the
 GCP service account above and reads those objects.
-${local.export_todo}
 EOT
 }
 
 resource "local_file" "todo" {
   count = var.todos_as_local_files ? 1 : 0
 
-  filename = "TODO - configure import in worklytics.md"
+  filename = var.todo_file_path
   content  = local.todo_content
 }

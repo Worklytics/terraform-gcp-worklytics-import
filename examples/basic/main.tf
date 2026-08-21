@@ -14,7 +14,6 @@ module "worklytics_import" {
   import_buckets             = var.import_buckets
   location                   = var.location
   force_destroy              = var.force_destroy
-  enable_export              = var.enable_export
   todos_as_local_files       = var.todos_as_local_files
 }
 

@@ -2,14 +2,27 @@ variable "resource_name_prefix" {
   type        = string
   description = "Prefix to give to names of infra created by this module, where applicable."
   default     = "worklytics-import-"
+
+  validation {
+    # Normalized prefix + "-" + 8 hex chars must be a valid GCS bucket name (3-63 chars).
+    condition = (
+      length(trimsuffix(replace(lower(var.resource_name_prefix), "_", "-"), "-")) >= 1
+      && length(trimsuffix(replace(lower(var.resource_name_prefix), "_", "-"), "-")) <= 54
+      && can(regex(
+        "^[a-z0-9]([a-z0-9.-]{0,52}[a-z0-9])?$",
+        trimsuffix(replace(lower(var.resource_name_prefix), "_", "-"), "-")
+      ))
+    )
+    error_message = "`resource_name_prefix` (lowercased, underscores to hyphens, trailing hyphen stripped) must be 1-54 chars starting and ending with a letter or digit, using only letters, digits, hyphens, and dots."
+  }
 }
 
 variable "worklytics_tenant_sa_email" {
   type        = string
   description = <<-EOT
     Email address of your Worklytics tenant's GCP service account (obtain from the Worklytics
-    app). Worklytics uses this identity to read (and, if `enable_export` is set, write) objects
-    in the import bucket(s).
+    app). Worklytics uses this identity to *read* objects from the import bucket(s)
+    (Customer Premises → Worklytics).
   EOT
 
   validation {
@@ -26,7 +39,7 @@ variable "bucket_name" {
   description = <<-EOT
     Existing GCS bucket for the primary import landing zone. If null and this module is managing
     a primary zone, a bucket is created. Providing a name skips primary bucket creation; the
-    module only grants Worklytics access.
+    module only grants Worklytics read access.
   EOT
   default     = null
   nullable    = true
@@ -40,13 +53,13 @@ variable "bucket_name" {
 variable "import_buckets" {
   type        = list(string)
   description = <<-EOT
-    Optional additional existing GCS buckets to grant Worklytics access to. Use this when the
-    customer has several ingest locations. Names must refer to buckets that already exist.
+    Optional additional existing GCS buckets to grant Worklytics read access to. Use this when
+    the customer has several ingest locations. Names must refer to buckets that already exist.
 
     The singular `bucket_name` still describes the primary zone. A primary zone is managed when
     `bucket_name` is set *or* when this list is empty (the default create-one-bucket path). If
     this list is non-empty and `bucket_name` is null, only the list is used — no extra bucket is
-    created.
+    created. The first list entry is the primary for outputs and connection URLs.
   EOT
   default     = []
 
@@ -56,6 +69,11 @@ variable "import_buckets" {
       can(regex("^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$", name))
     ])
     error_message = "Each import_buckets value must be a valid GCS bucket name."
+  }
+
+  validation {
+    condition     = length(var.import_buckets) == length(distinct(var.import_buckets))
+    error_message = "`import_buckets` must not contain duplicate names."
   }
 }
 
@@ -102,6 +120,11 @@ variable "bucket_access_logs_destination" {
   description = <<-EOT
     Existing GCS bucket that should receive access logs for a bucket this module creates.
     Recommended for production. If null, access logging is not configured.
+
+    Prerequisite (this module does not grant it): the destination must allow
+    `group:cloud-storage-analytics@google.com` to create objects
+    (`roles/storage.objectCreator`, or equivalent). Without that, apply can succeed while no
+    logs are written.
   EOT
   default     = null
   nullable    = true
@@ -112,19 +135,13 @@ variable "kms_crypto_key_name" {
   description = <<-EOT
     Optional CMEK (full CryptoKey resource name) for a bucket created by this module. If null,
     Google-managed encryption is used. The key must be in the same location as the bucket.
+
+    Prerequisite (this module does not grant it): the Cloud Storage service agent of the
+    bucket's project must have `roles/cloudkms.cryptoKeyEncrypterDecrypter` on the key.
+    Without that, apply fails when setting default encryption.
   EOT
   default     = null
   nullable    = true
-}
-
-variable "enable_export" {
-  type        = bool
-  description = <<-EOT
-    If true, also grant Worklytics write access (`bucket_write_iam_role`) on the same bucket(s)
-    so they can receive data exports, and include export connection instructions in the TODOs.
-    Import-only (the default) grants read access via `bucket_iam_role`.
-  EOT
-  default     = false
 }
 
 variable "bucket_iam_role" {
@@ -136,9 +153,6 @@ variable "bucket_iam_role" {
     Minimum permissions required to ingest:
       - storage.objects.get
       - storage.objects.list
-
-    If Worklytics must also write ingest checkpoints into the customer bucket, pass
-    `roles/storage.objectAdmin` (or a custom role with create/delete) instead.
   EOT
   default     = "roles/storage.objectViewer"
 
@@ -148,31 +162,6 @@ variable "bucket_iam_role" {
       var.bucket_iam_role
     ))
     error_message = "bucket_iam_role must be a built-in role (roles/...) or a custom role (projects/{project}/roles/{id} or organizations/{org}/roles/{id})."
-  }
-}
-
-variable "bucket_write_iam_role" {
-  type        = string
-  description = <<-EOT
-    IAM role granted when `enable_export` is true. Defaults to roles/storage.objectAdmin (the
-    Worklytics-documented export role).
-
-    Minimum permissions required to export (PoLP):
-      - storage.objects.create
-      - storage.objects.delete  (GCS overwrite is delete+create)
-      - storage.objects.list
-
-    Ignored when `enable_export` is false. If this equals `bucket_iam_role`, a single binding
-    is created.
-  EOT
-  default     = "roles/storage.objectAdmin"
-
-  validation {
-    condition = can(regex(
-      "^(roles/|projects/[^/]+/roles/|organizations/[^/]+/roles/)[a-zA-Z0-9_.]+$",
-      var.bucket_write_iam_role
-    ))
-    error_message = "bucket_write_iam_role must be a built-in role (roles/...) or a custom role (projects/{project}/roles/{id} or organizations/{org}/roles/{id})."
   }
 }
 
@@ -195,4 +184,14 @@ variable "todos_as_local_files" {
   type        = bool
   description = "Whether to render TODOs as flat files."
   default     = true
+}
+
+variable "todo_file_path" {
+  type        = string
+  description = <<-EOT
+    Path for the local TODO file when `todos_as_local_files` is true. Set a unique path per
+    module instance if several instances share one root module (they would otherwise overwrite
+    the same file).
+  EOT
+  default     = "TODO - configure import in worklytics.md"
 }

@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional creation of a GCS bucket; an existing name is reused when provided. Additional
   ingest locations via `import_buckets`.
 - IAM for the Worklytics tenant GCP service account (`roles/storage.objectViewer` by default).
-- Optional `enable_export` to also grant `roles/storage.objectAdmin` and emit export TODOs.
+  Import-only (Customer Premises → Worklytics); no write/export grants.
 - Native `terraform test` unit tests (mocked `google` provider) and a GitHub Actions integration
   test that applies the module in GCP and reads an object as the stand-in Worklytics identity.
 - Maintainer release helper (`tools/release.sh`) that tags `origin/main` only after required CI
