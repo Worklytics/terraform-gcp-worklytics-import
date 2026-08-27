@@ -29,6 +29,8 @@ jobs:
   # apply creates a real bucket and would race other e2e runs.
   tf_compat:
     name: 'Terraform plan (tf ${{ matrix.terraform_version }}, google ~> ${{ matrix.google_provider_major }}.0)'
+    # Fork PRs cannot use this repo's WIF (id-token is downgraded); skip privileged jobs.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -96,6 +98,7 @@ jobs:
 
   tf_e2e:
     name: 'Terraform e2e (apply + gcs read + destroy)'
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
@@ -168,6 +171,8 @@ jobs:
           fi
 
   # Branch protection requires a check named exactly "Terraform integration".
+  # Fork PRs skip WIF jobs (result=skipped); treat that as pass so the required
+  # gate still goes green. Lint/validate workflows still run on forks.
   integration_gate:
     name: Terraform integration
     needs: [tf_compat, tf_e2e]
@@ -178,5 +183,11 @@ jobs:
         run: |
           echo "tf_compat=${{ needs.tf_compat.result }}"
           echo "tf_e2e=${{ needs.tf_e2e.result }}"
-          test "${{ needs.tf_compat.result }}" = "success"
-          test "${{ needs.tf_e2e.result }}" = "success"
+          COMPAT="${{ needs.tf_compat.result }}"
+          E2E="${{ needs.tf_e2e.result }}"
+          if [ "$COMPAT" = "skipped" ] && [ "$E2E" = "skipped" ]; then
+            echo "Privileged GCP jobs skipped (fork PR)."
+            exit 0
+          fi
+          test "$COMPAT" = "success"
+          test "$E2E" = "success"
