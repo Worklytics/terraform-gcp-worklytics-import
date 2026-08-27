@@ -1,0 +1,193 @@
+name: terraform_integration
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'rc-*'
+
+# Only one integration run per ref; cancel superseded runs so applies don't pile up
+# against the shared CI GCP project.
+#
+# Identifiers live in GitHub Actions *variables* (not secrets): they are not
+# credentials, and secrets would redact them in logs. Provisioned outside this
+# repo (org-github / repo settings). Do not name a variable GCP_PROJECT —
+# google-github-actions/auth exports that from the SA and would overwrite it.
+concurrency:
+  group: tf-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI_SA_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT }}
+  GCP_IDENTITY_POOL: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+  EXAMPLE_TENANT_SA_EMAIL: ${{ vars.EXAMPLE_TENANT_SA_EMAIL }}
+  CI_TF_PROJECT: ${{ vars.CI_TF_PROJECT }}
+
+jobs:
+  # Parallel matrix: init/validate/plan with pinned provider majors. Do NOT apply here —
+  # apply creates a real bucket and would race other e2e runs.
+  tf_compat:
+    name: 'Terraform plan (tf ${{ matrix.terraform_version }}, google ~> ${{ matrix.google_provider_major }}.0)'
+    # Fork PRs cannot use this repo's WIF (id-token is downgraded); skip privileged jobs.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        terraform_version: [ '~1.6.0', '~1.9.0', 'latest' ]
+        google_provider_major: [ '7' ]
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: 'setup Terraform'
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ matrix.terraform_version }}
+          terraform_wrapper: false
+
+      - id: 'auth-gcp'
+        name: 'Authenticate to Google Cloud'
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_IDENTITY_POOL }}
+          service_account: ${{ env.CI_SA_EMAIL }}
+
+      - name: 'Set up Cloud SDK'
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          version: '>= 483.0.0'
+
+      - name: 'Pin Google provider to major ${{ matrix.google_provider_major }}'
+        # Overwrite providers.tf (the sole required_providers location) to pin to this matrix
+        # major version. Terraform resolves the intersection with the root module's ">= 7.0"
+        # constraint. Writing into the existing file avoids a duplicate required_providers error.
+        run: |
+          cat > examples/basic/providers.tf <<EOF
+          terraform {
+            backend "local" {
+              path = "terraform.tfstate"
+            }
+
+            required_providers {
+              google = {
+                source  = "hashicorp/google"
+                version = "~> ${{ matrix.google_provider_major }}.0"
+              }
+            }
+          }
+
+          provider "google" {
+          }
+          EOF
+
+      - name: 'Terraform init / validate / plan'
+        working-directory: examples/basic
+        run: |
+          terraform init
+          terraform validate
+          terraform plan -input=false \
+            -var="project_id=${CI_TF_PROJECT}" \
+            -var="worklytics_tenant_sa_email=${EXAMPLE_TENANT_SA_EMAIL}" \
+            -var="todos_as_local_files=false"
+
+  tf_e2e:
+    name: 'Terraform e2e (apply + gcs read + destroy)'
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: 'setup Terraform'
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: latest
+          terraform_wrapper: false
+
+      - id: 'auth-gcp'
+        name: 'Authenticate to Google Cloud'
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.GCP_IDENTITY_POOL }}
+          service_account: ${{ env.CI_SA_EMAIL }}
+
+      - name: 'Set up Cloud SDK'
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          version: '>= 483.0.0'
+
+      # WIF creds impersonate the CI SA. Terraform's Storage client then retries
+      # generateAccessToken with the bucket project as quota and 403s. A minted
+      # access token skips that refresh. Do not set GOOGLE_CLOUD_QUOTA_PROJECT:
+      # the GitHub principal is not a serviceUsageConsumer on the SA's project.
+      - name: 'Terraform - integration test examples/basic apply'
+        id: terraform_apply
+        working-directory: examples/basic
+        run: |
+          echo "Impersonating ${CI_SA_EMAIL}; creating buckets in ${CI_TF_PROJECT}"
+          PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
+          export GOOGLE_OAUTH_ACCESS_TOKEN
+          GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          terraform init
+          terraform apply -auto-approve \
+            -var="project_id=${CI_TF_PROJECT}" \
+            -var="worklytics_tenant_sa_email=${EXAMPLE_TENANT_SA_EMAIL}" \
+            -var="resource_name_prefix=${PREFIX}" \
+            -var="force_destroy=true" \
+            -var="todos_as_local_files=false"
+          echo "bucket_name=$(terraform output -raw bucket_name)" >> "$GITHUB_OUTPUT"
+
+      - name: 'GCS read as Worklytics tenant identity'
+        env:
+          CI_RUN: ${{ github.run_id }}_${{ github.run_attempt }}
+        run: |
+          ./test/gcs_roundtrip.sh \
+            "${EXAMPLE_TENANT_SA_EMAIL}" \
+            "${{ steps.terraform_apply.outputs.bucket_name }}"
+
+      - name: 'Terraform destroy'
+        if: always()
+        working-directory: examples/basic
+        run: |
+          if [ -f terraform.tfstate ] || [ -f terraform.tfstate.backup ]; then
+          PREFIX="ci-w8si-${GITHUB_RUN_ID}-"
+          export GOOGLE_OAUTH_ACCESS_TOKEN
+          GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          terraform destroy -auto-approve \
+            -var="project_id=${CI_TF_PROJECT}" \
+            -var="worklytics_tenant_sa_email=${EXAMPLE_TENANT_SA_EMAIL}" \
+            -var="resource_name_prefix=${PREFIX}" \
+            -var="force_destroy=true" \
+            -var="todos_as_local_files=false"
+          fi
+
+  # Branch protection requires a check named exactly "Terraform integration".
+  # Fork PRs skip WIF jobs (result=skipped); treat that as pass so the required
+  # gate still goes green. Lint/validate workflows still run on forks.
+  integration_gate:
+    name: Terraform integration
+    needs: [tf_compat, tf_e2e]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Require plan matrix + e2e success
+        run: |
+          echo "tf_compat=${{ needs.tf_compat.result }}"
+          echo "tf_e2e=${{ needs.tf_e2e.result }}"
+          COMPAT="${{ needs.tf_compat.result }}"
+          E2E="${{ needs.tf_e2e.result }}"
+          if [ "$COMPAT" = "skipped" ] && [ "$E2E" = "skipped" ]; then
+            echo "Privileged GCP jobs skipped (fork PR)."
+            exit 0
+          fi
+          test "$COMPAT" = "success"
+          test "$E2E" = "success"
