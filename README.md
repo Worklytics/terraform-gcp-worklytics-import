@@ -31,8 +31,7 @@ configuration and adapt it to your requirements.
 
 ## What it provisions
 
-1. **Optional storage** — a GCS bucket, unless you pass an existing `bucket_name`. Additional
-   ingest locations can be passed via `import_buckets`.
+1. **Optional storage** — a GCS bucket, unless you pass `existing_buckets_to_import`.
 2. **Read IAM** so your Worklytics tenant service account can list and get objects in each import
    bucket (`roles/storage.objectViewer` by default). No write/export roles are granted.
 
@@ -46,6 +45,8 @@ module "worklytics-import" {
   source  = "Worklytics/worklytics-import/gcp"
   version = "~> 0.1.0"
 
+  project_id = "YOUR_GCP_PROJECT"
+
   # email of your Worklytics Tenant SA (obtain from the Worklytics app)
   worklytics_tenant_sa_email = "YOUR_SA_EMAIL@YOUR_PROJECT_ID.iam.gserviceaccount.com"
 }
@@ -56,13 +57,14 @@ via GitHub:
 module "worklytics-import" {
   source = "git::https://github.com/worklytics/terraform-gcp-worklytics-import/?ref=v0.1.0"
 
+  project_id                 = "YOUR_GCP_PROJECT"
   worklytics_tenant_sa_email = "YOUR_SA_EMAIL@YOUR_PROJECT_ID.iam.gserviceaccount.com"
 }
 ```
 
 The calling configuration must declare a `google` provider (this module does not configure
-providers, so it can be composed into an existing GCP workspace). A bucket is created in
-the provider's project unless you pass `project_id`.
+providers, so it can be composed into an existing GCP workspace). Pass `project_id` explicitly;
+the module does not infer it from provider credentials.
 
 ```hcl
 provider "google" {
@@ -83,9 +85,8 @@ apply, or create the bucket in the same project as the authenticated identity.
 | Name | Required | Default | Description |
 |------|----------|---------|-------------|
 | `worklytics_tenant_sa_email` | yes | | Email of the Worklytics tenant GCP SA |
-| `bucket_name` | no | `null` | Reuse this bucket for the primary zone; otherwise one is created |
-| `import_buckets` | no | `[]` | Extra existing buckets to grant read access on |
-| `project_id` | no | provider project | Project for a created bucket |
+| `project_id` | yes | | GCP project for a created bucket |
+| `existing_buckets_to_import` | no | `[]` | Existing buckets to grant read access; if set, none is created |
 | `location` | no | `US` | Region / multi-region used only when creating a bucket |
 | `enable_versioning` | no | `true` | Object versioning on a created bucket |
 | `bucket_access_logs_destination` | no | `null` | Log bucket for access logs (recommended in prod) |
@@ -107,8 +108,8 @@ from the Worklytics app.
 The primary GCS bucket used as the import landing zone (created or reused).
 
 #### `import_buckets`
-Map of every import landing zone. The created-or-singular zone is keyed `primary`; extra
-`import_buckets` entries are keyed `bucket:<name>`.
+Map of every import landing zone. A created bucket is keyed `primary`; entries from
+`existing_buckets_to_import` are keyed `bucket:<name>`.
 
 #### `todo_markdown`
 Rendered when `todos_as_outputs = true`.
@@ -123,39 +124,25 @@ If you find incompatibilities, please open an issue.
 
 ## Usage Tips
 
-### Existing bucket
+### Existing buckets
 
-Pass `bucket_name` to skip bucket creation and only grant Worklytics read access:
-
-```hcl
-module "worklytics-import" {
-  source = "Worklytics/worklytics-import/gcp"
-
-  worklytics_tenant_sa_email = "YOUR_SA_EMAIL@YOUR_PROJECT_ID.iam.gserviceaccount.com"
-  bucket_name                = "my-existing-bucket"
-}
-```
-
-### Multiple import buckets
-
-Keep the singular variable for the primary landing zone and pass extra existing buckets:
+Pass `existing_buckets_to_import` to skip bucket creation and only grant Worklytics read access.
+The first list entry is treated as primary for outputs and connection URLs:
 
 ```hcl
 module "worklytics-import" {
   source = "Worklytics/worklytics-import/gcp"
 
+  project_id                 = "YOUR_GCP_PROJECT"
   worklytics_tenant_sa_email = "YOUR_SA_EMAIL@YOUR_PROJECT_ID.iam.gserviceaccount.com"
-  bucket_name                = "worklytics-import"
 
-  import_buckets = [
+  existing_buckets_to_import = [
+    "worklytics-import",
     "worklytics-import-hris",
     "worklytics-import-calendar",
   ]
 }
 ```
-
-If `import_buckets` is set and `bucket_name` is omitted, only the list is used (no extra created
-primary). The first list entry is treated as primary for outputs and connection URLs.
 
 ### Created-bucket hardening
 
@@ -169,6 +156,7 @@ For production, pass them:
 module "worklytics-import" {
   source = "Worklytics/worklytics-import/gcp"
 
+  project_id                       = "YOUR_GCP_PROJECT"
   worklytics_tenant_sa_email       = "YOUR_SA_EMAIL@YOUR_PROJECT_ID.iam.gserviceaccount.com"
   bucket_access_logs_destination   = "my-org-gcs-access-logs"
   kms_crypto_key_name              = "projects/my-project/locations/us/keyRings/import/cryptoKeys/gcs"
@@ -210,6 +198,7 @@ resource "google_project_iam_custom_role" "worklytics_import_reader" {
 module "worklytics-import" {
   source = "Worklytics/worklytics-import/gcp"
 
+  project_id                 = "YOUR_GCP_PROJECT"
   worklytics_tenant_sa_email = "YOUR_SA_EMAIL@YOUR_PROJECT_ID.iam.gserviceaccount.com"
   bucket_iam_role            = google_project_iam_custom_role.worklytics_import_reader.id
 }

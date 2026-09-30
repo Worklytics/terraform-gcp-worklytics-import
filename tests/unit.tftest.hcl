@@ -19,16 +19,17 @@ mock_provider "google" {
 }
 
 variables {
+  project_id                 = "worklytics-import-test"
   worklytics_tenant_sa_email = "tenant@test-project.iam.gserviceaccount.com"
   todos_as_local_files       = false
 }
 
-run "creates_bucket_when_omitted" {
+run "creates_bucket_when_list_empty" {
   command = plan
 
   assert {
     condition     = length(google_storage_bucket.import) == 1
-    error_message = "Expected a GCS bucket to be created when bucket_name is omitted."
+    error_message = "Expected a GCS bucket to be created when existing_buckets_to_import is empty."
   }
 
   assert {
@@ -55,21 +56,21 @@ run "creates_bucket_when_omitted" {
   }
 }
 
-run "reuses_existing_bucket" {
+run "reuses_existing_buckets" {
   command = plan
 
   variables {
-    bucket_name = "already-there-bucket"
+    existing_buckets_to_import = ["already-there-bucket"]
   }
 
   assert {
     condition     = length(google_storage_bucket.import) == 0
-    error_message = "Should not create a bucket when bucket_name is provided."
+    error_message = "Should not create a bucket when existing_buckets_to_import is set."
   }
 
   assert {
     condition     = output.bucket_name == "already-there-bucket"
-    error_message = "Output bucket name should match the provided existing bucket."
+    error_message = "Output bucket name should match the first existing bucket."
   }
 
   assert {
@@ -90,87 +91,27 @@ run "rejects_invalid_tenant_sa_email" {
   ]
 }
 
-run "rejects_invalid_bucket_name" {
+run "grants_access_to_each_existing_bucket" {
   command = plan
 
   variables {
-    bucket_name = "NOT_VALID"
-  }
-
-  expect_failures = [
-    var.bucket_name,
-  ]
-}
-
-run "grants_access_to_additional_import_buckets" {
-  command = plan
-
-  variables {
-    bucket_name    = "already-there-bucket"
-    import_buckets = ["second-ingest-bucket"]
+    existing_buckets_to_import = ["already-there-bucket", "second-ingest-bucket"]
   }
 
   assert {
     condition     = length(google_storage_bucket.import) == 0
-    error_message = "Should not create a bucket when all import locations already exist."
+    error_message = "Should not create a bucket when existing locations are listed."
   }
 
   assert {
     condition     = length(google_storage_bucket_iam_member.worklytics) == 2
-    error_message = "Primary plus additional import buckets should each get IAM."
+    error_message = "Each existing import bucket should get IAM."
   }
 
   assert {
     condition     = length(output.import_buckets) == 2
-    error_message = "import_buckets output should include primary and the extra landing zone."
+    error_message = "import_buckets output should include every listed landing zone."
   }
-}
-
-run "list_only_skips_created_primary" {
-  command = plan
-
-  variables {
-    import_buckets = ["only-from-list"]
-  }
-
-  assert {
-    condition     = length(google_storage_bucket.import) == 0
-    error_message = "List-only existing locations should not create a bucket."
-  }
-
-  assert {
-    condition     = length(google_storage_bucket_iam_member.worklytics) == 1
-    error_message = "List-only should grant access to exactly the listed buckets."
-  }
-
-  assert {
-    condition     = output.bucket_name == "only-from-list"
-    error_message = "Primary outputs should fall back to the listed bucket."
-  }
-}
-
-run "rejects_invalid_import_buckets_name" {
-  command = plan
-
-  variables {
-    import_buckets = ["NOT_VALID"]
-  }
-
-  expect_failures = [
-    var.import_buckets,
-  ]
-}
-
-run "rejects_duplicate_import_buckets" {
-  command = plan
-
-  variables {
-    import_buckets = ["same-bucket", "same-bucket"]
-  }
-
-  expect_failures = [
-    var.import_buckets,
-  ]
 }
 
 run "rejects_invalid_resource_name_prefix" {
@@ -185,16 +126,16 @@ run "rejects_invalid_resource_name_prefix" {
   ]
 }
 
-run "list_only_preserves_first_bucket_as_primary" {
+run "existing_list_preserves_first_bucket_as_primary" {
   command = plan
 
   variables {
-    import_buckets = ["zebra-ingest-bucket", "alpha-ingest-bucket"]
+    existing_buckets_to_import = ["zebra-ingest-bucket", "alpha-ingest-bucket"]
   }
 
   assert {
     condition     = output.bucket_name == "zebra-ingest-bucket"
-    error_message = "List-only primary outputs should follow caller order, not lexicographic sort."
+    error_message = "Primary outputs should follow caller order, not lexicographic sort."
   }
 }
 
@@ -202,18 +143,17 @@ run "bucket_named_primary_does_not_collide" {
   command = plan
 
   variables {
-    bucket_name    = "already-there-bucket"
-    import_buckets = ["primary"]
+    existing_buckets_to_import = ["already-there-bucket", "primary"]
   }
 
   assert {
     condition     = length(google_storage_bucket_iam_member.worklytics) == 2
-    error_message = "A list bucket named primary must not collide with the reserved primary key."
+    error_message = "A listed bucket named primary must not collide with the reserved primary key."
   }
 
   assert {
     condition     = output.bucket_name == "already-there-bucket"
-    error_message = "Singular bucket_name remains the primary landing zone."
+    error_message = "The first listed bucket remains the primary landing zone."
   }
 }
 
@@ -232,7 +172,7 @@ run "disables_versioning_when_requested" {
   }
 }
 
-run "sets_project_id_on_created_bucket" {
+run "created_bucket_uses_project_id" {
   command = plan
 
   variables {
@@ -243,7 +183,7 @@ run "sets_project_id_on_created_bucket" {
     condition = alltrue([
       for b in google_storage_bucket.import : b.project == "other-project"
     ])
-    error_message = "Created buckets should land in var.project_id when it is set."
+    error_message = "Created buckets should land in var.project_id."
   }
 }
 
@@ -283,9 +223,9 @@ run "todo_urls_use_worklytics_host" {
   command = plan
 
   variables {
-    bucket_name      = "already-there-bucket"
-    todos_as_outputs = true
-    worklytics_host  = "acme.worklytics.co"
+    existing_buckets_to_import = ["already-there-bucket"]
+    todos_as_outputs           = true
+    worklytics_host            = "acme.worklytics.co"
   }
 
   assert {

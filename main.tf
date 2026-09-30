@@ -1,26 +1,18 @@
 locals {
   bucket_name_prefix = trimsuffix(replace(lower(var.resource_name_prefix), "_", "-"), "-")
 
-  # Primary singular zone: default create-one path, or when the caller set the singular name.
-  include_primary = length(var.import_buckets) == 0 || var.bucket_name != null
+  reuse_existing = length(var.existing_buckets_to_import) > 0
 
-  extra_buckets = [
-    for name in var.import_buckets : name if name != var.bucket_name
-  ]
-
-  import_targets_list = concat(
-    local.include_primary ? [{
+  import_targets_list = local.reuse_existing ? [
+    for name in var.existing_buckets_to_import : {
+      # Namespace so a bucket literally named "primary" cannot collide with the created-bucket key.
+      key         = "bucket:${name}"
+      bucket_name = name
+    }
+    ] : [{
       key         = "primary"
-      bucket_name = var.bucket_name
-    }] : [],
-    [
-      for name in local.extra_buckets : {
-        # Namespace so a bucket literally named "primary" cannot collide with the reserved key.
-        key         = "bucket:${name}"
-        bucket_name = name
-      }
-    ]
-  )
+      bucket_name = null
+  }]
 
   import_targets = {
     for loc in local.import_targets_list : loc.key => {
@@ -87,7 +79,7 @@ locals {
     }
   }
 
-  # Prefer the reserved primary key; otherwise the first list-only target (caller order, not sort).
+  # Created bucket uses the reserved primary key; otherwise the first listed existing bucket.
   primary_import_key = contains(keys(local.resolved_import_targets), "primary") ? "primary" : local.import_targets_list[0].key
   primary_import     = local.resolved_import_targets[local.primary_import_key]
 }

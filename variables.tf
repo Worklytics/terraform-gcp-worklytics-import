@@ -34,47 +34,14 @@ variable "worklytics_tenant_sa_email" {
   }
 }
 
-variable "bucket_name" {
-  type        = string
-  description = <<-EOT
-    Existing GCS bucket for the primary import landing zone. If null and this module is managing
-    a primary zone, a bucket is created. Providing a name skips primary bucket creation; the
-    module only grants Worklytics read access.
-  EOT
-  default     = null
-  nullable    = true
-
-  validation {
-    condition     = var.bucket_name == null || can(regex("^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$", var.bucket_name))
-    error_message = "`bucket_name` must be a valid GCS bucket name (3-63 chars, lowercase, numbers, dots, hyphens)."
-  }
-}
-
-variable "import_buckets" {
+variable "existing_buckets_to_import" {
   type        = list(string)
   description = <<-EOT
-    Optional additional existing GCS buckets to grant Worklytics read access to. Use this when
-    the customer has several ingest locations. Names must refer to buckets that already exist.
-
-    The singular `bucket_name` still describes the primary zone. A primary zone is managed when
-    `bucket_name` is set *or* when this list is empty (the default create-one-bucket path). If
-    this list is non-empty and `bucket_name` is null, only the list is used — no extra bucket is
-    created. The first list entry is the primary for outputs and connection URLs.
+    Existing GCS buckets to grant Worklytics read access. If empty (the default), this module
+    creates one bucket. If non-empty, no bucket is created; the module only grants IAM on the
+    named buckets. The first entry is used for singular outputs and connection URLs.
   EOT
   default     = []
-
-  validation {
-    condition = alltrue([
-      for name in var.import_buckets :
-      can(regex("^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$", name))
-    ])
-    error_message = "Each import_buckets value must be a valid GCS bucket name."
-  }
-
-  validation {
-    condition     = length(var.import_buckets) == length(distinct(var.import_buckets))
-    error_message = "`import_buckets` must not contain duplicate names."
-  }
 }
 
 variable "location" {
@@ -89,12 +56,9 @@ variable "location" {
 variable "project_id" {
   type        = string
   description = <<-EOT
-    GCP project in which to create a bucket. If null, the google provider's project is used.
-    Set this when the provider is authenticated as a SA in a different project than the bucket
-    (for example CI WIF from a corp SA creating buckets in a sandbox project).
+    GCP project for a bucket created by this module. Always pass this explicitly rather than
+    relying on the google provider's default project.
   EOT
-  default     = null
-  nullable    = true
 }
 
 variable "force_destroy" {
@@ -133,8 +97,9 @@ variable "bucket_access_logs_destination" {
 variable "kms_crypto_key_name" {
   type        = string
   description = <<-EOT
-    Optional CMEK (full CryptoKey resource name) for a bucket created by this module. If null,
-    Google-managed encryption is used. The key must be in the same location as the bucket.
+    Optional CMEK for a bucket created by this module. Full CryptoKey resource name, e.g.
+    `projects/my-project/locations/us/keyRings/import/cryptoKeys/gcs`. If null, Google-managed
+    encryption is used. The key must be in the same location as the bucket.
 
     Prerequisite (this module does not grant it): the Cloud Storage service agent of the
     bucket's project must have `roles/cloudkms.cryptoKeyEncrypterDecrypter` on the key.

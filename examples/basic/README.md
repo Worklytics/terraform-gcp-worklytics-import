@@ -17,12 +17,13 @@ Customer-facing usage (Terraform Registry source, your own providers and remote 
 Within `examples/basic/` (eg, here), create a `terraform.tfvars` file with the following content,
 customizing GCP project and Worklytics tenant SA email as needed.
 
-Omit `bucket_name` to have the module create a bucket; set it to reuse one.
+Omit `existing_buckets_to_import` to have the module create a bucket; set it to reuse one
+or more existing buckets (no bucket is created).
 
 ```hcl
 project_id                 = "my-gcp-project"
 worklytics_tenant_sa_email = "tenant@my-project.iam.gserviceaccount.com"
-# bucket_name              = "my-existing-bucket" # optional; omit to create
+# existing_buckets_to_import = ["my-existing-bucket"] # optional; omit to create
 resource_name_prefix       = "my-worklytics-data-import-" # Optional
 ```
 

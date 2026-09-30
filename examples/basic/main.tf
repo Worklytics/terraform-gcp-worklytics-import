@@ -11,8 +11,7 @@ module "worklytics_import" {
   resource_name_prefix       = var.resource_name_prefix
   worklytics_tenant_sa_email = var.worklytics_tenant_sa_email
   worklytics_host            = var.worklytics_host
-  bucket_name                = var.bucket_name
-  import_buckets             = var.import_buckets
+  existing_buckets_to_import = var.existing_buckets_to_import
   location                   = var.location
   force_destroy              = var.force_destroy
   todos_as_local_files       = var.todos_as_local_files

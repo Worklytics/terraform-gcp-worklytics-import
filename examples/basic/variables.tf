@@ -1,7 +1,6 @@
 variable "project_id" {
   type        = string
-  description = "GCP project for a bucket created by the module. If null, the google provider project is used."
-  default     = null
+  description = "GCP project for a bucket created by the module."
 }
 
 variable "resource_name_prefix" {
@@ -21,15 +20,9 @@ variable "worklytics_host" {
   default     = "app.worklytics.co"
 }
 
-variable "bucket_name" {
-  type        = string
-  description = "Existing GCS bucket to reuse. If null, the module creates one."
-  default     = null
-}
-
-variable "import_buckets" {
+variable "existing_buckets_to_import" {
   type        = list(string)
-  description = "Optional additional existing import buckets."
+  description = "Existing GCS buckets to grant access on. If empty, the module creates one."
   default     = []
 }
 
