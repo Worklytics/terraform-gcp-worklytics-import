@@ -139,8 +139,16 @@ variable "worklytics_host" {
   default     = "app.worklytics.co"
 
   validation {
-    condition     = can(regex("^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$", var.worklytics_host))
-    error_message = "`worklytics_host` must be a hostname without scheme or path (e.g. app.worklytics.co)."
+    condition = (
+      length(var.worklytics_host) <= 253
+      && alltrue([
+        for label in split(".", var.worklytics_host) :
+        length(label) >= 1
+        && length(label) <= 63
+        && can(regex("^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$", label))
+      ])
+    )
+    error_message = "`worklytics_host` must be a hostname with 1-63 character labels that start and end with a letter or digit."
   }
 }
 
