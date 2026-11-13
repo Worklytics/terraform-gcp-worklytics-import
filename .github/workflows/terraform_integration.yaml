@@ -10,19 +10,20 @@ on:
 # Only one integration run per ref; cancel superseded runs so applies don't pile up
 # against the shared CI GCP project.
 #
-# Identifiers live in GitHub Actions *variables* (not secrets): they are not
-# credentials, and secrets would redact them in logs. Provisioned outside this
-# repo (org-github / repo settings). Do not name a variable GCP_PROJECT —
-# google-github-actions/auth exports that from the SA and would overwrite it.
+# worklytics-infra gh-action-oidc writes GCP_SERVICE_ACCOUNT /
+# GCP_WORKLOAD_IDENTITY_PROVIDER as *secrets* on public repos and *variables*
+# on private ones. Prefer secrets, then vars, then the known CI identities.
+# Do not name a variable GCP_PROJECT — google-github-actions/auth exports that
+# from the SA and would overwrite it.
 concurrency:
   group: tf-integration-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  CI_SA_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT }}
-  GCP_IDENTITY_POOL: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-  EXAMPLE_TENANT_SA_EMAIL: ${{ vars.EXAMPLE_TENANT_SA_EMAIL }}
-  CI_TF_PROJECT: ${{ vars.CI_TF_PROJECT }}
+  CI_SA_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT || vars.GCP_SERVICE_ACCOUNT || 'gh-actions-tf-gcp-import@worklytics-corp.iam.gserviceaccount.com' }}
+  GCP_IDENTITY_POOL: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER || vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/432357880585/locations/global/workloadIdentityPools/github-actions/providers/github' }}
+  EXAMPLE_TENANT_SA_EMAIL: ${{ vars.EXAMPLE_TENANT_SA_EMAIL || 'w8s-import-tf-ci@worklytics-ci.iam.gserviceaccount.com' }}
+  CI_TF_PROJECT: ${{ vars.CI_TF_PROJECT || 'worklytics-ci' }}
 
 jobs:
   # Parallel matrix: init/validate/plan with pinned provider majors. Do NOT apply here —
